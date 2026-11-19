@@ -370,6 +370,8 @@ def main():
     assert all(x['metadata'].get('namespace') != 'accuknox-qa' for x in controllers['items'] + demo['items'])
     deployment = next(x for x in demo['items'] if x['kind'] == 'Deployment')
     deployment['spec']['template']['spec']['containers'][0]['image'] = BASE
+    namespaces = [x for x in controllers['items'] + demo['items'] if x['kind'] == 'Namespace']
+    print(run(['apply', '-f', '-'], {'apiVersion': 'v1', 'kind': 'List', 'items': namespaces}), flush=True)
     for fixture in [controllers, demo]:
         print(run(['apply', '-f', '-'], fixture), flush=True)
     for n in ['source-controller', 'kustomize-controller']:
