@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create only a minimal existing-Deployment image update for the isolated CD demo."""
+"""Create the complete reviewed isolated-demo Deployment for Flux SSA."""
 import hashlib
 import json
 import os
@@ -27,10 +27,116 @@ def main(index_path, descriptor_path, output_path):
                       for candidate in (raw, raw.rstrip(b'\n'))}, 'Registry descriptor does not match index bytes'
     out = Path(output_path)
     out.mkdir(exist_ok=False)
-    obj = {'apiVersion': 'apps/v1', 'kind': 'Deployment',
-           'metadata': {'name': 'wisecow', 'namespace': 'accuknox-cd-demo'},
-           'spec': {'template': {'metadata': {'annotations': {'qa.accuknox.example/source-commit': sha}},
-                                 'spec': {'containers': [{'name': 'wisecow', 'image': image + '@' + digest}]}}}}
+    # Flux reconciles complete desired state, not a partial kubectl merge patch.
+    # Preserve every reviewed isolated-demo field, including the immutable selector.
+    obj = json.loads('''
+{
+  "apiVersion": "apps/v1",
+  "kind": "Deployment",
+  "metadata": {
+    "name": "wisecow",
+    "namespace": "accuknox-cd-demo"
+  },
+  "spec": {
+    "replicas": 1,
+    "selector": {
+      "matchLabels": {
+        "app": "wisecow"
+      }
+    },
+    "template": {
+      "metadata": {
+        "labels": {
+          "app": "wisecow"
+        }
+      },
+      "spec": {
+        "securityContext": {
+          "runAsNonRoot": true,
+          "runAsUser": 10001,
+          "runAsGroup": 10001,
+          "fsGroup": 10001,
+          "seccompProfile": {
+            "type": "RuntimeDefault"
+          }
+        },
+        "containers": [
+          {
+            "name": "wisecow",
+            "image": "wisecow:concurrent-v2-20261119-1248",
+            "imagePullPolicy": "IfNotPresent",
+            "ports": [
+              {
+                "name": "http",
+                "containerPort": 4499
+              }
+            ],
+            "securityContext": {
+              "allowPrivilegeEscalation": false,
+              "readOnlyRootFilesystem": true,
+              "capabilities": {
+                "drop": [
+                  "ALL"
+                ]
+              }
+            },
+            "resources": {
+              "requests": {
+                "cpu": "50m",
+                "memory": "64Mi"
+              },
+              "limits": {
+                "cpu": "250m",
+                "memory": "128Mi"
+              }
+            },
+            "startupProbe": {
+              "tcpSocket": {
+                "port": "http"
+              },
+              "periodSeconds": 2,
+              "failureThreshold": 15
+            },
+            "readinessProbe": {
+              "tcpSocket": {
+                "port": "http"
+              },
+              "initialDelaySeconds": 3,
+              "periodSeconds": 10
+            },
+            "livenessProbe": {
+              "tcpSocket": {
+                "port": "http"
+              },
+              "initialDelaySeconds": 10,
+              "periodSeconds": 20,
+              "failureThreshold": 3
+            },
+            "volumeMounts": [
+              {
+                "name": "runtime",
+                "mountPath": "/run/wisecow"
+              }
+            ]
+          }
+        ],
+        "volumes": [
+          {
+            "name": "runtime",
+            "emptyDir": {
+              "sizeLimit": "1Mi"
+            }
+          }
+        ],
+        "automountServiceAccountToken": false,
+        "serviceAccountName": "wisecow-app"
+      }
+    }
+  }
+}
+    ''')
+    obj['spec']['template']['metadata']['annotations'] = {'qa.accuknox.example/source-commit': sha}
+    obj['spec']['template']['spec']['containers'][0]['image'] = image + '@' + digest
     (out / 'deployment-image.json').write_text(json.dumps(obj, indent=2) + '\n')
     (out / 'kustomization.yaml').write_text('apiVersion: kustomize.config.k8s.io/v1beta1\nkind: Kustomization\nresources:\n  - deployment-image.json\n')
     print(json.dumps({'image': image, 'digest': digest, 'commit': sha, 'target': 'accuknox-cd-demo/wisecow'}))
