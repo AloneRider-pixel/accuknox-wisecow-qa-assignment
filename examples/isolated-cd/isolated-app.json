@@ -1,0 +1,153 @@
+{
+  "apiVersion": "v1",
+  "kind": "List",
+  "items": [
+    {
+      "apiVersion": "v1",
+      "kind": "Namespace",
+      "metadata": {
+        "name": "accuknox-cd-demo",
+        "labels": {
+          "pod-security.kubernetes.io/enforce": "restricted",
+          "pod-security.kubernetes.io/enforce-version": "v1.36",
+          "pod-security.kubernetes.io/warn": "restricted",
+          "pod-security.kubernetes.io/warn-version": "v1.36"
+        }
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "ServiceAccount",
+      "metadata": {
+        "name": "wisecow-app",
+        "namespace": "accuknox-cd-demo"
+      },
+      "automountServiceAccountToken": false
+    },
+    {
+      "apiVersion": "apps/v1",
+      "kind": "Deployment",
+      "metadata": {
+        "name": "wisecow",
+        "namespace": "accuknox-cd-demo"
+      },
+      "spec": {
+        "replicas": 1,
+        "selector": {
+          "matchLabels": {
+            "app": "wisecow"
+          }
+        },
+        "template": {
+          "metadata": {
+            "labels": {
+              "app": "wisecow"
+            }
+          },
+          "spec": {
+            "securityContext": {
+              "runAsNonRoot": true,
+              "runAsUser": 10001,
+              "runAsGroup": 10001,
+              "fsGroup": 10001,
+              "seccompProfile": {
+                "type": "RuntimeDefault"
+              }
+            },
+            "containers": [
+              {
+                "name": "wisecow",
+                "image": "wisecow:concurrent-v2-20261119-1248",
+                "imagePullPolicy": "IfNotPresent",
+                "ports": [
+                  {
+                    "name": "http",
+                    "containerPort": 4499
+                  }
+                ],
+                "securityContext": {
+                  "allowPrivilegeEscalation": false,
+                  "readOnlyRootFilesystem": true,
+                  "capabilities": {
+                    "drop": [
+                      "ALL"
+                    ]
+                  }
+                },
+                "resources": {
+                  "requests": {
+                    "cpu": "50m",
+                    "memory": "64Mi"
+                  },
+                  "limits": {
+                    "cpu": "250m",
+                    "memory": "128Mi"
+                  }
+                },
+                "startupProbe": {
+                  "tcpSocket": {
+                    "port": "http"
+                  },
+                  "periodSeconds": 2,
+                  "failureThreshold": 15
+                },
+                "readinessProbe": {
+                  "tcpSocket": {
+                    "port": "http"
+                  },
+                  "initialDelaySeconds": 3,
+                  "periodSeconds": 10
+                },
+                "livenessProbe": {
+                  "tcpSocket": {
+                    "port": "http"
+                  },
+                  "initialDelaySeconds": 10,
+                  "periodSeconds": 20,
+                  "failureThreshold": 3
+                },
+                "volumeMounts": [
+                  {
+                    "name": "runtime",
+                    "mountPath": "/run/wisecow"
+                  }
+                ]
+              }
+            ],
+            "volumes": [
+              {
+                "name": "runtime",
+                "emptyDir": {
+                  "sizeLimit": "1Mi"
+                }
+              }
+            ],
+            "automountServiceAccountToken": false,
+            "serviceAccountName": "wisecow-app"
+          }
+        }
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Service",
+      "metadata": {
+        "name": "wisecow",
+        "namespace": "accuknox-cd-demo"
+      },
+      "spec": {
+        "type": "ClusterIP",
+        "selector": {
+          "app": "wisecow"
+        },
+        "ports": [
+          {
+            "name": "http",
+            "port": 80,
+            "targetPort": "http"
+          }
+        ]
+      }
+    }
+  ]
+}

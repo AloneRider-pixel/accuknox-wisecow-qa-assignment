@@ -1,0 +1,13 @@
+# Isolated pull-based CD: reproduction boundary
+
+The runnable reproduction is `tools/flux_regression.py` in the CI workflow, not a blanket apply of this directory. It requires Docker, kubectl, the pinned Kind executable and the workflow's exact environment/artifact inputs. Read the complete workflow and script first. The hosted workflow creates a disposable cluster named `wisecow-ci` and always attempts deletion in its final step. The script requires GitHub Actions, the exact repository, a single node and the explicit `kind-wisecow-ci` context. It does not create or delete the cluster itself. Never run this workflow on a machine with an unrelated existing cluster of that name. Do not point it at a shared or production cluster.
+
+The readable JSON fixtures here are decoded byte-for-byte from the public regression script's embedded fixtures. They contain configuration, not personal machine output or credentials. The old local image label inside the baseline is a synthetic test reference, not an instruction to pull that tag; the rehearsal substitutes its exact tested image. Source hashes are included for review.
+
+The controller fixture includes CRDs and narrowly scoped controller Roles. The app fixture supplies dedicated namespaces, restricted Pod Security, service accounts, Service and baseline Deployment. NetworkPolicy enforcement in the local cluster is unverified and is not claimed as a security boundary. Do not widen RBAC or reuse this installation in an existing cluster without reviewing all cluster-scoped resources and conflicts.
+
+In the guided local demonstration, the OCIRepository and Kustomization run in `accuknox-delivery`; only the dedicated `accuknox-cd-demo/wisecow` Deployment is managed. The source follows the anonymous GHCR OCI artifact `delivery` tag every five minutes. It applies complete desired state with a digest-pinned application image. The app service account has no API-token mount. Original `accuknox-qa` application and TLS resources are outside this target.
+
+Actual proof: CI reproduced the old missing-selector failure, checked no baseline change, then applied the corrected artifact and checked rollout/same Deployment UID/other settings/pod health. The local arm64 cluster applied the corrected artifact; real HTTP cow checks and Ready delivery tracking passed. Later-push behavior has not been exercised. Pausing or stopping Docker also stops local reconciliation and availability.
+
+No installation, activation, rollback or deletion command is automatically authorized by this document. Inspect resources and dependencies first. Any cleanup must target only the dedicated demonstration's resources and account for shared CRDs. Do not delete the original application namespace.

@@ -1,40 +1,47 @@
 # Wisecow containerization and QA exercise
 
-Bash Wisecow application, Dockerfile, Kubernetes Deployment/Service, GitHub Actions build/test/push workflow and two Python utilities: web-log analysis and application HTTP health checking.
+Bash Wisecow application, Dockerfile, Kubernetes Deployment and Service, GitHub Actions native multi-platform build/test/push, isolated pull-based Flux delivery, and two Python utilities.
 
-This is assisted preparation and guided practice. It is not a claim of independent authorship or prior Docker/Kubernetes experience. The source is adapted from https://github.com/nyrahul/wisecow at commit32b220c9deecb46d621f6c849599d838b39ad488. Original source and Apache2.0 licence are retained. See docs/TRANSPORT_CHANGE.md for the disclosed replacement of sequential FIFO/netcat transport with bounded per-connection socat handlers. The original and timeout-only variant had failed browser/port-forward tests; the revised candidate was checked separately.
+This is assisted preparation and guided practice, not independent authorship or prior Docker/Kubernetes experience. Adapted from https://github.com/nyrahul/wisecow at commit `32b220c9deecb46d621f6c849599d838b39ad488`, with its Apache 2.0 licence retained. `docs/TRANSPORT_CHANGE.md` explains the change from sequential FIFO/netcat transport to bounded per-connection socat handlers. This training server is not a production HTTP implementation.
 
-## Verified locally, 19 November2026
+## Verified scope, 19 November 2026
 
--31Python unit tests and log-fixture/HTTP-status scenarios passed.
-- Revised linux/arm64 Docker image built; nonroot/read-only/resource-limited container regression passed real-cow/framing/idle/concurrent/probe-like connection checks.
-- Explicitly scoped local kind cluster: server API dry-run, rollout, source/config/runtime identity binding and Service port-forward passed.
-- Real HTTP200/cow/framing/EOF,8concurrent requests while another peer was idle, clean idle closure and24further concurrent requests passed through the Service.
-- Actual Chrome screenshot was inspected and showed cow output at a localhost-only endpoint.
-- A120-second observation from13:10:34 to13:12:34IST passed13HTTP samples, unchanged pod/image, Ready/Running,zero restarts and no Warning events. This is bounded evidence, not a long-term stability/performance guarantee.18.84MiB was a container snapshot, not peak memory proof.
+| Area | Observed result | Limits |
+|---|---|---|
+| Python utilities | 31 unit tests; synthetic log and local HTTP fixtures | Selected assessment objectives 3 and 4 only |
+| Container and Kubernetes | Real cow response, HTTP framing/EOF, idle peer and concurrent connections, nonroot container, local Kind rollout and Service | Bounded local checks, not production availability |
+| Stability | 13 HTTP samples over 120 seconds, same pod/image, Ready, zero restarts, no Warning events | Not long-term uptime, sustained-load or peak-memory proof |
+| CI | Native Linux amd64 and arm64 builds and per-platform real-cow regression, merged image pushed to GHCR | Successful run linked below, not a claim based only on workflow YAML |
+| Delivery | Actual Flux controllers fetched/applied corrected CI artifact on local arm64 cluster; demo healthy; original app and TLS unchanged | Separate restricted demo namespace, not delivery to the original app/TLS namespace |
+| Tracking | OCI source and Kustomization Ready, five-minute `delivery` tag checks configured | Requires Mac and Docker running; a later code push has **not** been exercised end to end |
+| HTTPS | Strict explicit-private-CA validation, localhost/IP SAN, TLS 1.2/1.3, real cow, negative trust/hostname checks | Proxy terminates TLS; HTTP upstream. Not public trusted HTTPS, Ingress, browser trust or end-to-end TLS |
 
-## Reproduce in your own isolated environment
+Successful build and actual Flux regression: https://github.com/AloneRider-pixel/accuknox-wisecow-qa-assignment/actions/runs/44521052195
 
-Review the code and requirements first. Local Docker example:
+The Flux regression first reproduced the old missing-selector artifact rejection and checked that the baseline stayed unchanged. The complete desired-state correction then reconciled, rolled out and preserved the Deployment UID and other reviewed settings. A later guided local check verified the running arm64 image through registry/index/config identities and tested 13 HTTP cow responses, including concurrent requests. This does not establish that a future push has been tested.
+
+## Run the utilities and container checks
 
 ```sh
-docker build -t wisecow:review .
-python3 tools/connection_regression.py wisecow:review
 python3 -m unittest discover -s tests -v
 python3 scripts/log_analyzer.py fixtures/access.log
+python3 scripts/http_health_checker.py --help
+docker build -t wisecow:review .
+python3 tools/connection_regression.py wisecow:review
 ```
 
-The helper creates/removes only a uniquely named local test container. It does not deploy to Kubernetes or push an image. For Kubernetes, choose an explicit context/namespace, load or pull your reviewed image, create a separate exact-tag/digest Deployment from k8s/deployment.yaml, server-dry-run and review only that Deployment and service.yaml, then apply and inspect rollout/events/HTTP. The generic wisecow:concurrent-v2 image reference is a local template, not a published-image identity. Do not apply the whole k8s directory: it contains an unconfigured TLS ingress example.
+The helper creates/removes only a uniquely named local test container. It neither deploys to Kubernetes nor publishes an image. The synthetic fixture uses reserved example addresses.
 
-## CI and remaining gaps
+For a Kubernetes exercise, select an explicit isolated context and namespace, inspect the image and objects, then dry-run and apply only the reviewed Deployment and Service. `k8s/deployment.yaml` is a template with a local image reference, not an instruction to deploy the published artifact. Do not apply the whole directory: it also contains an unconfigured Ingress example. Deliberate pod deletion/recovery has not been tested.
 
-.github/workflows/ci.yml checks Python/Bash/manifest relationships, builds a local image and runs the real-cow regression. On trusted main it can push GHCR commit/latest tags after checks. A workflow file is not proof of a successful run; consult actual Actions results and registry digest. No CV, personal logs, credentials or private screenshots are included.
+## CI and isolated delivery
 
-Automatic continuous deployment is NOT IMPLEMENTED. TLS ingress is an example only and HTTPS has NOT been verified. The assessment labels CD/TLS Challenge Goals while mentioning them in the end goal; these gaps are not represented as complete. Pod replacement recovery, sustained-load performance and long-term uptime are also untested. This small training server is not a production HTTP implementation.
+`.github/workflows/ci.yml` runs checks and builds/tests each native platform. Trusted main commits can publish commit/latest image tags, a digest-pinned desired-state artifact and the moving `delivery` artifact tag. `tools/prepare_delivery_artifact.py` validates the two-platform index and descriptor and produces the complete isolated Deployment, including its immutable selector, security settings, resources and probes.
 
-## Python utilities
+`tools/flux_regression.py` is an ephemeral hosted-CI rehearsal. The hosted workflow creates a disposable Kind cluster named `wisecow-ci`, pins its node image and always attempts cleanup. The script is CI-only and explicitly selects `kind-wisecow-ci`; it must never be repurposed against an existing user cluster. The isolated demonstration uses two Flux controllers and scoped reconciliation permissions, no incoming connection to the Mac, no self-hosted Actions runner and no new registry password. See `examples/isolated-cd/README.md` and `docs/VERIFICATION_SCOPE.md` before attempting reproduction. The workflow's `delivery` tag is published before the downstream rehearsal finishes, so this is not a claim that delivery is gated by the final rehearsal job.
 
-- scripts/log_analyzer.py summarizes common/combined web logs,404counts,top paths and source IPs. The included fixture is synthetic reserved-address data.
-- scripts/http_health_checker.py samples HTTP response status/timing, does not follow redirects, and reports observed sample uptime, not historical availability. Run --help for arguments.
+## Local TLS template
+
+`examples/local-tls/proxy.template.yaml` is non-secret configuration only. A dedicated short-lived private CA and leaf must be generated and retained outside the repository. Review `examples/local-tls/README.md` before using it. No private certificate, key, Secret payload, personal machine path, raw Terminal transcript, CV or personal screenshot is included.
 
 No employer form submission is implied by this repository.
